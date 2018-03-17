@@ -1,0 +1,114 @@
+version: '3'
+
+services:
+  # php cli + fpm 
+  php:
+    build: 
+      context: ./php
+      args:
+        - TZ=${TZ}
+        - SOURCE_MIRROR=${SOURCE_MIRROR}
+    links:
+      - mysql
+      - redis
+    volumes:
+      - ${WWW_DIR}:/var/www
+      - ${DATA_DIR}/logs/php-fpm:/var/log/php-fpm
+      - ./php/php.ini:/usr/local/etc/php/php.ini
+      - ./php/php-fpm.conf:/usr/local/etc/php-fpm.conf
+    ports:
+      - "${PHP_FPM_PORT}:9000"
+    networks:
+      - backend
+
+  # nginx + acme.sh
+  nginx:
+    build: 
+      context: ./nginx
+      args:
+        - TZ=${TZ}
+        - SOURCE_MIRROR=${SOURCE_MIRROR}
+    depends_on:
+      - php
+    environment:
+      - DP_Id=$DP_ID
+      - DP_Key=$DP_KEY
+    volumes:
+      - ${WWW_DIR}:/var/www
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/sites:/etc/nginx/sites
+      - ${DATA_DIR}/logs/nginx:/var/log/nginx
+      - ${DATA_DIR}/acme.sh:/acme.sh
+    ports:
+      - "${NGINX_HTTP_PORT}:80"
+      - "${NGINX_HTTPS_PORT}:443"
+    networks:
+      - frontend
+      - backend
+
+  mysql:
+    build:
+      context: ./mysql
+      args:
+        - TZ=${TZ}
+        - MYSQL_VERSION=${MYSQL_VERSION}
+    environment:
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - ${DATA_DIR}/mysql:/var/lib/mysql
+      - ./mysql/conf.d:/etc/mysql/conf.d
+      - ./mysql/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+    ports:
+      - "${MYSQL_PORT}:3306"
+    networks:
+      - backend
+
+  # redis
+  redis:
+    build: 
+      context: ./redis
+      args:
+        - TZ=${TZ}
+    volumes:
+      - ${DATA_DIR}/redis:/data
+      - ./redis/redis.conf:/usr/local/etc/redis.conf
+    ports:
+      - "${REDIS_PORT}:6379"
+    networks:
+      - backend
+
+  backup:
+    build:
+      context: ./backup
+      args:
+        - TZ=${TZ}
+        - SOURCE_MIRROR=${SOURCE_MIRROR}
+        - COS_ACCESS_ID=${COS_ACCESS_ID}
+        - COS_SECRET_KEY=${COS_SECRET_KEY}
+        - COS_APP_ID=${COS_APP_ID}
+        - COS_BUCKET=${COS_BUCKET}
+        - COS_REGION=${COS_REGION}
+      environment:
+        - ENABLE_CLOUD=${ENABLE_CLOUD}
+        - BACKUP_DIR=${BACKUP_DIR}
+        - EXCLUDE_DIR=${EXCLUDE_DIR}
+        - BACKUP_DB=${BACKUP_DB}
+        - MYSQL_USER=${MYSQL_USER}
+        - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+    volumes:
+      - ${DATA_DIR}/backup:/backup
+      - ./backup/cron.d:/usr/local/etc/cron.d:ro
+    links:
+      - mysql
+    networks:
+      - backend
+
+networks:
+  frontend:
+    driver: "bridge"
+  backend:
+    driver: "bridge"
+

@@ -1,0 +1,1 @@
+5 1 * * * /usr/bin/backup > /var/log/backup.log 2>&1
